@@ -1,0 +1,352 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>TCC Sentinel - Admin</title>
+<style>
+  * { box-sizing: border-box; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    margin: 0; padding: 0;
+    background: #0f172a; color: #e2e8f0; min-height: 100vh;
+  }
+  header {
+    background: #1e293b; padding: 18px 28px;
+    border-bottom: 1px solid #334155;
+    display: flex; justify-content: space-between; align-items: center;
+  }
+  header h1 { margin: 0; font-size: 20px; font-weight: 600; }
+  header a { color: #60a5fa; text-decoration: none; font-size: 14px; }
+
+  .container { max-width: 1400px; margin: 0 auto; padding: 24px; }
+
+  .actions {
+    display: flex; gap: 12px; margin-bottom: 20px; flex-wrap: wrap;
+  }
+  button {
+    background: #3b82f6; color: white; border: none; padding: 10px 16px;
+    border-radius: 6px; cursor: pointer; font-size: 14px; font-weight: 500;
+  }
+  button:hover { background: #2563eb; }
+  button.secondary { background: #475569; }
+  button.secondary:hover { background: #64748b; }
+  button.danger { background: #dc2626; }
+  button.danger:hover { background: #b91c1c; }
+  button.small { padding: 4px 10px; font-size: 12px; }
+
+  table {
+    width: 100%; border-collapse: collapse;
+    background: #1e293b; border-radius: 8px; overflow: hidden;
+  }
+  th, td {
+    padding: 10px 14px; text-align: left; font-size: 13px;
+    border-bottom: 1px solid #334155;
+  }
+  th { background: #0f172a; color: #94a3b8; font-weight: 600; text-transform: uppercase; font-size: 11px; letter-spacing: 0.05em; }
+  tr:last-child td { border-bottom: none; }
+  tr:hover td { background: #262f42; }
+
+  .pill {
+    display: inline-block; padding: 2px 8px; border-radius: 12px;
+    font-size: 11px; font-weight: 600; text-transform: uppercase;
+  }
+  .pill.critical { background: rgba(239,68,68,0.2); color: #fca5a5; }
+  .pill.minor { background: rgba(148,163,184,0.2); color: #cbd5e1; }
+  .pill.disabled { background: rgba(100,116,139,0.2); color: #94a3b8; }
+  .pill.yes { background: rgba(34,197,94,0.2); color: #86efac; }
+  .pill.no { background: rgba(234,179,8,0.2); color: #fde047; }
+
+  .modal-bg {
+    position: fixed; inset: 0; background: rgba(0,0,0,0.7);
+    display: none; align-items: center; justify-content: center; z-index: 100;
+  }
+  .modal-bg.open { display: flex; }
+  .modal {
+    background: #1e293b; border-radius: 10px; padding: 24px;
+    width: 100%; max-width: 560px; max-height: 90vh; overflow-y: auto;
+  }
+  .modal h2 { margin: 0 0 16px; font-size: 18px; }
+  .form-row { margin-bottom: 14px; }
+  .form-row label { display: block; font-size: 12px; color: #94a3b8; margin-bottom: 4px; text-transform: uppercase; letter-spacing: 0.05em; }
+  .form-row input, .form-row select, .form-row textarea {
+    width: 100%; padding: 8px 10px;
+    background: #0f172a; border: 1px solid #334155; border-radius: 6px;
+    color: #e2e8f0; font-size: 14px; font-family: inherit;
+  }
+  .form-row input:focus, .form-row select:focus, .form-row textarea:focus {
+    outline: none; border-color: #3b82f6;
+  }
+  .form-row textarea { resize: vertical; min-height: 60px; }
+  .form-actions { display: flex; gap: 10px; justify-content: flex-end; margin-top: 20px; }
+
+  .msg { padding: 10px 14px; border-radius: 6px; margin-bottom: 16px; display: none; }
+  .msg.ok { display: block; background: rgba(34,197,94,0.1); color: #86efac; border: 1px solid rgba(34,197,94,0.3); }
+  .msg.err { display: block; background: rgba(239,68,68,0.1); color: #fca5a5; border: 1px solid rgba(239,68,68,0.3); }
+</style>
+</head>
+<body>
+<header>
+  <h1>🛡️ Sentinel Admin</h1>
+  <a href="/">← Dashboard</a>
+</header>
+
+<div class="container">
+  <div id="msg" class="msg"></div>
+
+  <div class="actions">
+    <button onclick="openAddModal()">+ Add App</button>
+    <button class="secondary" onclick="runNow('hourly')">Run hourly checks now</button>
+    <button class="secondary" onclick="runNow('daily')">Run daily deep checks now</button>
+  </div>
+
+  <table id="apps-table">
+    <thead>
+      <tr>
+        <th>Name</th>
+        <th>Criticality</th>
+        <th>Enabled</th>
+        <th>L2 Ready</th>
+        <th>Base URL</th>
+        <th>Actions</th>
+      </tr>
+    </thead>
+    <tbody id="apps-body"></tbody>
+  </table>
+</div>
+
+<div class="modal-bg" id="modal-bg">
+  <div class="modal">
+    <h2 id="modal-title">Add App</h2>
+    <input type="hidden" id="app-id">
+    <div class="form-row">
+      <label>App key (short, no spaces)</label>
+      <input id="app_key" placeholder="e.g. new_app">
+    </div>
+    <div class="form-row">
+      <label>Display name</label>
+      <input id="display_name" placeholder="e.g. My New App">
+    </div>
+    <div class="form-row">
+      <label>Base URL</label>
+      <input id="base_url" placeholder="https://my-app.onrender.com">
+    </div>
+    <div class="form-row">
+      <label>Login URL (for Layer 2, optional)</label>
+      <input id="login_url" placeholder="https://my-app.onrender.com/api/login">
+    </div>
+    <div class="form-row">
+      <label>Smoke test endpoint (Layer 3, optional)</label>
+      <input id="smoke_test_endpoint" placeholder="https://my-app.onrender.com/api/health">
+    </div>
+    <div class="form-row">
+      <label>Data sanity module (Layer 4, optional)</label>
+      <input id="data_sanity_module" placeholder="e.g. staff_time_heartbeat">
+    </div>
+    <div class="form-row">
+      <label>Criticality</label>
+      <select id="criticality">
+        <option value="minor">Minor</option>
+        <option value="critical">Critical</option>
+      </select>
+    </div>
+    <div class="form-row">
+      <label>Sentinel user created in this app?</label>
+      <select id="sentinel_user_configured">
+        <option value="false">Not yet</option>
+        <option value="true">Yes</option>
+      </select>
+    </div>
+    <div class="form-row">
+      <label>Enabled</label>
+      <select id="enabled">
+        <option value="true">Yes</option>
+        <option value="false">Paused</option>
+      </select>
+    </div>
+    <div class="form-row">
+      <label>Notes</label>
+      <textarea id="notes"></textarea>
+    </div>
+    <div class="form-actions">
+      <button class="secondary" onclick="closeModal()">Cancel</button>
+      <button class="danger" id="delete-btn" onclick="deleteApp()" style="display:none">Delete</button>
+      <button onclick="saveApp()">Save</button>
+    </div>
+  </div>
+</div>
+
+<script>
+let currentApps = [];
+
+function getToken() {
+  // Read from cookie or ?token= query
+  const m = document.cookie.match(/sentinel_jwt=([^;]+)/);
+  if (m) return m[1];
+  const url = new URL(window.location);
+  return url.searchParams.get('token');
+}
+
+async function api(path, opts = {}) {
+  const token = getToken();
+  const headers = opts.headers || {};
+  headers['Content-Type'] = 'application/json';
+  if (token) headers['Authorization'] = 'Bearer ' + token;
+  const res = await fetch(path, { ...opts, headers });
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}));
+    throw new Error(body.error || res.statusText);
+  }
+  return res.json();
+}
+
+function showMsg(text, ok = true) {
+  const el = document.getElementById('msg');
+  el.textContent = text;
+  el.className = 'msg ' + (ok ? 'ok' : 'err');
+  setTimeout(() => { el.className = 'msg'; }, 4000);
+}
+
+function escapeHtml(s) {
+  return String(s || '').replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+}
+
+async function load() {
+  try {
+    const data = await api('/api/admin/apps');
+    currentApps = data.apps;
+    const body = document.getElementById('apps-body');
+    body.innerHTML = currentApps.map(a => `
+      <tr>
+        <td><strong>${escapeHtml(a.display_name)}</strong><br><small style="color:#64748b">${escapeHtml(a.app_key)}</small></td>
+        <td><span class="pill ${a.criticality}">${a.criticality}</span></td>
+        <td><span class="pill ${a.enabled ? 'yes' : 'disabled'}">${a.enabled ? 'Yes' : 'Paused'}</span></td>
+        <td><span class="pill ${a.sentinel_user_configured ? 'yes' : 'no'}">${a.sentinel_user_configured ? 'Ready' : 'Pending'}</span></td>
+        <td><a href="${escapeHtml(a.base_url)}" target="_blank" style="color:#60a5fa;font-size:12px">${escapeHtml(a.base_url)}</a></td>
+        <td>
+          <button class="secondary small" onclick='openEditModal(${a.id})'>Edit</button>
+          <button class="secondary small" onclick='toggleCriticality(${a.id}, "${a.criticality}")'>
+            → ${a.criticality === 'critical' ? 'Minor' : 'Critical'}
+          </button>
+          <button class="secondary small" onclick='toggleEnabled(${a.id}, ${a.enabled})'>
+            ${a.enabled ? 'Pause' : 'Resume'}
+          </button>
+        </td>
+      </tr>
+    `).join('');
+  } catch (err) {
+    showMsg('Load failed: ' + err.message, false);
+  }
+}
+
+function openAddModal() {
+  document.getElementById('modal-title').textContent = 'Add App';
+  document.getElementById('app-id').value = '';
+  ['app_key','display_name','base_url','login_url','smoke_test_endpoint','data_sanity_module','notes']
+    .forEach(id => document.getElementById(id).value = '');
+  document.getElementById('criticality').value = 'minor';
+  document.getElementById('sentinel_user_configured').value = 'false';
+  document.getElementById('enabled').value = 'true';
+  document.getElementById('app_key').disabled = false;
+  document.getElementById('delete-btn').style.display = 'none';
+  document.getElementById('modal-bg').classList.add('open');
+}
+
+function openEditModal(id) {
+  const app = currentApps.find(a => a.id === id);
+  if (!app) return;
+  document.getElementById('modal-title').textContent = 'Edit: ' + app.display_name;
+  document.getElementById('app-id').value = app.id;
+  document.getElementById('app_key').value = app.app_key;
+  document.getElementById('app_key').disabled = true;
+  document.getElementById('display_name').value = app.display_name || '';
+  document.getElementById('base_url').value = app.base_url || '';
+  document.getElementById('login_url').value = app.login_url || '';
+  document.getElementById('smoke_test_endpoint').value = app.smoke_test_endpoint || '';
+  document.getElementById('data_sanity_module').value = app.data_sanity_module || '';
+  document.getElementById('criticality').value = app.criticality;
+  document.getElementById('sentinel_user_configured').value = String(app.sentinel_user_configured);
+  document.getElementById('enabled').value = String(app.enabled);
+  document.getElementById('notes').value = app.notes || '';
+  document.getElementById('delete-btn').style.display = 'inline-block';
+  document.getElementById('modal-bg').classList.add('open');
+}
+
+function closeModal() {
+  document.getElementById('modal-bg').classList.remove('open');
+}
+
+async function saveApp() {
+  const id = document.getElementById('app-id').value;
+  const payload = {
+    app_key: document.getElementById('app_key').value.trim(),
+    display_name: document.getElementById('display_name').value.trim(),
+    base_url: document.getElementById('base_url').value.trim(),
+    login_url: document.getElementById('login_url').value.trim() || null,
+    smoke_test_endpoint: document.getElementById('smoke_test_endpoint').value.trim() || null,
+    data_sanity_module: document.getElementById('data_sanity_module').value.trim() || null,
+    criticality: document.getElementById('criticality').value,
+    sentinel_user_configured: document.getElementById('sentinel_user_configured').value === 'true',
+    enabled: document.getElementById('enabled').value === 'true',
+    notes: document.getElementById('notes').value.trim() || null
+  };
+  try {
+    if (id) {
+      delete payload.app_key; // can't change key on update
+      await api('/api/admin/apps/' + id, { method: 'PATCH', body: JSON.stringify(payload) });
+      showMsg('Updated');
+    } else {
+      await api('/api/admin/apps', { method: 'POST', body: JSON.stringify(payload) });
+      showMsg('Added');
+    }
+    closeModal();
+    load();
+  } catch (err) {
+    showMsg('Save failed: ' + err.message, false);
+  }
+}
+
+async function deleteApp() {
+  const id = document.getElementById('app-id').value;
+  if (!id) return;
+  if (!confirm('Delete this app from monitoring? (Check history will be kept.)')) return;
+  try {
+    await api('/api/admin/apps/' + id, { method: 'DELETE' });
+    showMsg('Deleted');
+    closeModal();
+    load();
+  } catch (err) {
+    showMsg('Delete failed: ' + err.message, false);
+  }
+}
+
+async function toggleCriticality(id, current) {
+  try {
+    await api('/api/admin/apps/' + id, {
+      method: 'PATCH',
+      body: JSON.stringify({ criticality: current === 'critical' ? 'minor' : 'critical' })
+    });
+    load();
+  } catch (err) { showMsg(err.message, false); }
+}
+
+async function toggleEnabled(id, current) {
+  try {
+    await api('/api/admin/apps/' + id, {
+      method: 'PATCH', body: JSON.stringify({ enabled: !current })
+    });
+    load();
+  } catch (err) { showMsg(err.message, false); }
+}
+
+async function runNow(runType) {
+  try {
+    await api('/api/admin/run-now', { method: 'POST', body: JSON.stringify({ runType }) });
+    showMsg(`${runType} run started - refresh dashboard in a minute to see results`);
+  } catch (err) { showMsg(err.message, false); }
+}
+
+load();
+</script>
+</body>
+</html>
